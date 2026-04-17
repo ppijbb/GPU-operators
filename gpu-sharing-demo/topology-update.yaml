@@ -1,0 +1,24 @@
+---
+# 토폴로지 ConfigMap - 다중 GPU 풀 정의
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: topology
+  namespace: gpu-operator
+data:
+  topology.yml: |
+    migStrategy: mixed
+    nodePoolLabelKey: run.ai/simulated-gpu-node-pool
+    nodePools:
+      t4-pool:
+        gpuCount: 2
+        gpuMemory: 16384
+        gpuProduct: Tesla-T4
+      a100-pool:
+        gpuCount: 2
+        gpuMemory: 40960
+        gpuProduct: NVIDIA-A100-SXM4-40GB
+      h100-pool:
+        gpuCount: 8
+        gpuMemory: 81920
+        gpuProduct: NVIDIA-H100-SXM5-80GB

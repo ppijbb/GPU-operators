@@ -1,0 +1,25 @@
+topology:
+  nodePoolLabelKey: run.ai/simulated-gpu-node-pool
+  migStrategy: mixed
+  nodePools:
+    t4-pool:
+      gpuProduct: Tesla-T4
+      gpuCount: 4
+      gpuMemory: 16384
+    a100-pool:
+      gpuProduct: NVIDIA-A100-SXM4-40GB
+      gpuCount: 8
+      gpuMemory: 40960
+    h100-pool:
+      gpuProduct: NVIDIA-H100-SXM5-80GB
+      gpuCount: 8
+      gpuMemory: 81920
+
+statusUpdater:
+  disableNodeLabeling: false
+
+kwokDraPlugin:
+  enabled: false
+
+draPlugin:
+  enabled: false

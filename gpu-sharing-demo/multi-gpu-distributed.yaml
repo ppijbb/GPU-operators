@@ -1,0 +1,135 @@
+---
+# H100 3노드 분산 학습 - 노드 간 GPU 클러스터링 (Gang Scheduling)
+# 실제 환경에서는 NCCL + InfiniBand로 NVLink 통신
+# 여기선 스케줄링 패턴 연습용
+
+# PodGroup으로 Gang Scheduling - 3 Pod 동시 스케줄링 보장
+apiVersion: scheduling.sigs.k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: h100-distributed-train
+  namespace: default
+spec:
+  minMember: 3        # 3개 Pod 모두 스케줄되거나 아무것도 안 됨
+  minResources:
+    nvidia.com/gpu: "24"  # 3노드 x 8GPU
+---
+# Worker 0 - h100-node-1
+apiVersion: v1dkslds
+kind: Pod
+metadata:
+  name: h100-dist-worker-0
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: distributed
+    pod-group: h100-distributed-train
+  annotations:
+    run.ai/simulated-gpu-utilization: "80-95"
+    scheduling.sigs.k8s.io/pod-group: h100-distributed-train
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: h100-node-1
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: worker
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/gpu: "8"    # 노드 전체 8 GPU
+    env:
+    - name: WORLD_SIZE
+      value: "3"
+    - name: RANK
+      value: "0"
+    - name: MASTER_ADDR
+      value: h100-dist-worker-0
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+# Worker 1 - h100-node-2
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-dist-worker-1
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: distributed
+    pod-group: h100-distributed-train
+  annotations:
+    run.ai/simulated-gpu-utilization: "80-95"
+    scheduling.sigs.k8s.io/pod-group: h100-distributed-train
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: h100-node-2
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: worker
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/gpu: "8"
+    env:
+    - name: WORLD_SIZE
+      value: "3"
+    - name: RANK
+      value: "1"
+    - name: MASTER_ADDR
+      value: h100-dist-worker-0
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+# Worker 2 - h100-node-3
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-dist-worker-2
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: distributed
+    pod-group: h100-distributed-train
+  annotations:
+    run.ai/simulated-gpu-utilization: "80-95"
+    scheduling.sigs.k8s.io/pod-group: h100-distributed-train
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: h100-node-3
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: worker
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/gpu: "8"
+    env:
+    - name: WORLD_SIZE
+      value: "3"
+    - name: RANK
+      value: "2"
+    - name: MASTER_ADDR
+      value: h100-dist-worker-0
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName

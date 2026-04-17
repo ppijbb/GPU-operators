@@ -1,0 +1,139 @@
+---
+# H100 MIG 격리 데모
+# H100 80GB MIG 프로필: 1g.10gb(x7), 2g.20gb(x3), 3g.40gb(x2), 7g.80gb(x1)
+# 3노드 x 8GPU = 24GPU → 1g.10gb 기준 최대 168 슬라이스
+
+# --- 격리 시나리오 A: 소규모 추론 서비스 (1g.10gb) ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-mig-infer-1
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: mig-isolation
+    tier: inference
+  annotations:
+    run.ai/simulated-gpu-utilization: "30-50"
+spec:
+  nodeSelector:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: infer
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/mig-1g.10gb: 1   # 10GB 격리 슬라이스
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-mig-infer-2
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: mig-isolation
+    tier: inference
+  annotations:
+    run.ai/simulated-gpu-utilization: "20-40"
+spec:
+  nodeSelector:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: infer
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/mig-1g.10gb: 1
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+# --- 격리 시나리오 B: 중간 규모 파인튜닝 (3g.40gb) ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-mig-finetune
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: mig-isolation
+    tier: training
+  annotations:
+    run.ai/simulated-gpu-utilization: "70-90"
+spec:
+  nodeSelector:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: train
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/mig-3g.40gb: 1   # 40GB 격리 슬라이스 (같은 GPU에서 다른 슬라이스와 완전 격리)
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+# --- 격리 시나리오 C: 풀 GPU 학습 (7g.80gb) ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: h100-mig-full-train
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: mig-isolation
+    tier: full-training
+  annotations:
+    run.ai/simulated-gpu-utilization: "90-100"
+spec:
+  nodeSelector:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+  containers:
+  - name: train
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/mig-7g.80gb: 1   # GPU 1장 전체 (80GB)
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName

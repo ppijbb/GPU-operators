@@ -1,0 +1,5 @@
+.secrets/
+kubeconfig/
+.env
+__pycache__
+.venv

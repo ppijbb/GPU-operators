@@ -1,0 +1,3 @@
+[submodule "fake-gpu-operator"]
+	path = fake-gpu-operator
+	url = https://github.com/run-ai/fake-gpu-operator.git

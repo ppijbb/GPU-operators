@@ -1,0 +1,50 @@
+---
+# Run:ai fractional GPU - 0.5 GPU fraction (스케줄러 레벨 분할)
+# fake-gpu-operator에서 스케줄링 동작 확인용
+apiVersion: v1
+kind: Pod
+metadata:
+  name: runai-fractional-a
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: runai-fractional
+  annotations:
+    run.ai/simulated-gpu-utilization: "40-60"  # Grafana에서 확인할 utilization
+spec:
+  containers:
+  - name: workload
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: runai-fractional-b
+  namespace: default
+  labels:
+    app: gpu-sharing-demo
+    mode: runai-fractional
+  annotations:
+    run.ai/simulated-gpu-utilization: "20-40"
+spec:
+  containers:
+  - name: workload
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName

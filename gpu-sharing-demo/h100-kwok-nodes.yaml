@@ -1,0 +1,102 @@
+---
+# H100 8-GPU KWOK 시뮬레이션 노드 - Node 1
+apiVersion: v1
+kind: Node
+metadata:
+  name: h100-node-1
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+    nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.memory: "81920"
+    nvidia.com/mig.strategy: mixed
+spec:
+  taints:
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  allocatable:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  capacity:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  conditions:
+  - type: Ready
+    status: "True"
+---
+# H100 8-GPU KWOK 시뮬레이션 노드 - Node 2
+apiVersion: v1
+kind: Node
+metadata:
+  name: h100-node-2
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+    nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.memory: "81920"
+    nvidia.com/mig.strategy: mixed
+spec:
+  taints:
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  allocatable:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  capacity:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  conditions:
+  - type: Ready
+    status: "True"
+---
+# H100 8-GPU KWOK 시뮬레이션 노드 - Node 3
+apiVersion: v1
+kind: Node
+metadata:
+  name: h100-node-3
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    type: kwok
+    run.ai/simulated-gpu-node-pool: h100-pool
+    nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.memory: "81920"
+    nvidia.com/mig.strategy: mixed
+spec:
+  taints:
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  allocatable:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  capacity:
+    cpu: "96"
+    memory: 384Gi
+    pods: "110"
+    nvidia.com/gpu: "8"
+  conditions:
+  - type: Ready
+    status: "True"
