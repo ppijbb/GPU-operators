@@ -19,7 +19,19 @@ statusUpdater:
   disableNodeLabeling: false
 
 kwokDraPlugin:
-  enabled: false
+  enabled: true
 
 draPlugin:
-  enabled: false
+  enabled: true
+
+computeDomainController:
+  enabled: true
+
+computeDomainDraPlugin:
+  enabled: true
+
+kwokComputeDomainDraPlugin:
+  enabled: true
+
+imagePullSecrets:
+  - name: gcr-secret

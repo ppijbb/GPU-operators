@@ -8,6 +8,8 @@ metadata:
     kwok.x-k8s.io/node: fake
   labels:
     type: kwok
+    node-role.kubernetes.io/runai-dynamic-mig: 'true'
+    node-role.kubernetes.io/runai-mig-enabled: 'true'
     run.ai/simulated-gpu-node-pool: h100-pool
     nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
     nvidia.com/gpu.count: "8"
@@ -24,11 +26,19 @@ status:
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   capacity:
     cpu: "96"
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   conditions:
   - type: Ready
     status: "True"
@@ -42,6 +52,8 @@ metadata:
     kwok.x-k8s.io/node: fake
   labels:
     type: kwok
+    node-role.kubernetes.io/runai-dynamic-mig: 'true'
+    node-role.kubernetes.io/runai-mig-enabled: 'true'
     run.ai/simulated-gpu-node-pool: h100-pool
     nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
     nvidia.com/gpu.count: "8"
@@ -58,11 +70,19 @@ status:
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   capacity:
     cpu: "96"
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   conditions:
   - type: Ready
     status: "True"
@@ -76,6 +96,8 @@ metadata:
     kwok.x-k8s.io/node: fake
   labels:
     type: kwok
+    node-role.kubernetes.io/runai-dynamic-mig: 'true'
+    node-role.kubernetes.io/runai-mig-enabled: 'true'
     run.ai/simulated-gpu-node-pool: h100-pool
     nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
     nvidia.com/gpu.count: "8"
@@ -92,11 +114,19 @@ status:
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   capacity:
     cpu: "96"
     memory: 384Gi
     pods: "110"
     nvidia.com/gpu: "8"
+    nvidia.com/mig-1g.10gb: "56"
+    nvidia.com/mig-2g.20gb: "24"
+    nvidia.com/mig-3g.40gb: "16"
+    nvidia.com/mig-7g.80gb: "8"
   conditions:
   - type: Ready
     status: "True"
