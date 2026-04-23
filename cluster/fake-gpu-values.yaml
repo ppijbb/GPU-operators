@@ -1,22 +1,59 @@
 topology:
-  nodePoolLabelKey: run.ai/simulated-gpu-node-pool
   migStrategy: mixed
+  nodePoolLabelKey: run.ai/simulated-gpu-node-pool
   nodePools:
-    t4-pool:
-      gpuProduct: Tesla-T4
-      gpuCount: 4
-      gpuMemory: 16384
     a100-pool:
-      gpuProduct: NVIDIA-A100-SXM4-40GB
       gpuCount: 8
       gpuMemory: 40960
+      gpuProduct: NVIDIA-A100-SXM4-40GB
+      otherDevices:
+        - name: nvidia.com/mig-1g.10gb
+          count: 56
+        - name: nvidia.com/mig-2g.20gb
+          count: 24
+        - name: nvidia.com/mig-3g.40gb
+          count: 16
     h100-pool:
-      gpuProduct: NVIDIA-H100-SXM5-80GB
       gpuCount: 8
       gpuMemory: 81920
+      gpuProduct: NVIDIA-H100-SXM5-80GB
+      otherDevices:
+        - name: nvidia.com/mig-1g.10gb
+          count: 56
+        - name: nvidia.com/mig-2g.20gb
+          count: 24
+        - name: nvidia.com/mig-3g.40gb
+          count: 16
+        - name: nvidia.com/mig-7g.80gb
+          count: 8
+    t4-pool:
+      gpuCount: 4
+      gpuMemory: 16384
+      gpuProduct: Tesla-T4
+      otherDevices:
+        - name: nvidia.com/mig-1g.1gb
+          count: 56
+    k80-pool:
+      gpuCount: 2
+      gpuMemory: 11441
+      gpuProduct: Tesla-K80
+      otherDevices:
+        - name: nvidia.com/mig-1g.1gb
+          count: 56
 
 statusUpdater:
   disableNodeLabeling: false
+  image:
+    repository: fake-gpu-operator/status-updater
+    tag: local
+    pullPolicy: IfNotPresent
+
+kwokGpuDevicePlugin:
+  enabled: true
+  image:
+    repository: fake-gpu-operator/kwok-gpu-device-plugin
+    tag: local
+    pullPolicy: IfNotPresent
 
 kwokDraPlugin:
   enabled: true
@@ -31,7 +68,7 @@ computeDomainDraPlugin:
   enabled: true
 
 kwokComputeDomainDraPlugin:
-  enabled: true
+  enabled: false
 
 imagePullSecrets:
   - name: gcr-secret
