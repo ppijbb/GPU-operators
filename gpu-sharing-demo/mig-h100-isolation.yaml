@@ -30,7 +30,7 @@ spec:
     command: ["sleep", "infinity"]
     resources:
       limits:
-        nvidia.com/mig-1g.10gb: 1   # 10GB 격리 슬라이스
+        nvidia.com/mig-1g.10gb: '1'   # 10GB 격리 슬라이스
     env:
     - name: NODE_NAME
       valueFrom:
@@ -63,7 +63,7 @@ spec:
     command: ["sleep", "infinity"]
     resources:
       limits:
-        nvidia.com/mig-1g.10gb: 1
+        nvidia.com/mig-1g.10gb: '1'
     env:
     - name: NODE_NAME
       valueFrom:
@@ -97,7 +97,7 @@ spec:
     command: ["sleep", "infinity"]
     resources:
       limits:
-        nvidia.com/mig-3g.40gb: 1   # 40GB 격리 슬라이스 (같은 GPU에서 다른 슬라이스와 완전 격리)
+        nvidia.com/mig-3g.40gb: '1'   # 40GB 격리 슬라이스 (같은 GPU에서 다른 슬라이스와 완전 격리)
     env:
     - name: NODE_NAME
       valueFrom:
@@ -131,7 +131,7 @@ spec:
     command: ["sleep", "infinity"]
     resources:
       limits:
-        nvidia.com/mig-7g.80gb: 1   # GPU 1장 전체 (80GB)
+        nvidia.com/mig-7g.80gb: '1'   # GPU 1장 전체 (80GB)
     env:
     - name: NODE_NAME
       valueFrom:

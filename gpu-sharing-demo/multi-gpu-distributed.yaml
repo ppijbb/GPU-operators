@@ -15,7 +15,7 @@ spec:
     nvidia.com/gpu: "24"  # 3노드 x 8GPU
 ---
 # Worker 0 - h100-node-1
-apiVersion: v1dkslds
+apiVersion: v1
 kind: Pod
 metadata:
   name: h100-dist-worker-0

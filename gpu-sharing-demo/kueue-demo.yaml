@@ -1,0 +1,80 @@
+---
+# H100 풀 = 하나의 ResourceFlavor
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: h100-pool
+spec:
+  nodeLabels:
+    run.ai/simulated-gpu-node-pool: h100-pool
+    type: kwok
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Equal
+    value: fake
+    effect: NoSchedule
+---
+# ClusterQueue: H100 MIG 슬라이스 quota
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: h100-queue
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+  - coveredResources: ["nvidia.com/mig-2g.20gb", "cpu", "memory"]
+    flavors:
+    - name: h100-pool
+      resources:
+      - name: nvidia.com/mig-2g.20gb
+        nominalQuota: 6   # 일부러 작게 — 큐잉 보려고
+      - name: cpu
+        nominalQuota: "100"
+      - name: memory
+        nominalQuota: 200Gi
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: h100-local
+  namespace: default
+spec:
+  clusterQueue: h100-queue
+---
+# 8개 Job → quota 6 → 2개는 Pending(=admitted 대기)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kueue-train-1
+  namespace: default
+  labels:
+    kueue.x-k8s.io/queue-name: h100-local
+spec:
+  parallelism: 1
+  completions: 1
+  suspend: true
+  template:
+    metadata:
+      annotations:
+        run.ai/simulated-gpu-utilization: "60-80"
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        type: kwok
+        run.ai/simulated-gpu-node-pool: h100-pool
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Equal
+        value: fake
+        effect: NoSchedule
+      containers:
+      - name: trainer
+        image: ubuntu:22.04
+        command: ["sleep", "120"]
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+            nvidia.com/mig-2g.20gb: '1'
+          limits:
+            nvidia.com/mig-2g.20gb: '1'

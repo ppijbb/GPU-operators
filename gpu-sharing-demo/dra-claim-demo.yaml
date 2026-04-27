@@ -1,0 +1,36 @@
+---
+# DRA ResourceClaimTemplate: 80Gi 메모리 H100 GPU 1개 요청
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  name: h100-single-gpu
+  namespace: default
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        deviceClassName: gpu.nvidia.com
+        selectors:
+        - cel:
+            expression: device.attributes["gpu.nvidia.com"].model == "NVIDIA-H100-SXM5-80GB"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dra-demo
+  namespace: default
+  labels:
+    app: dra-demo
+spec:
+  restartPolicy: Never
+  resourceClaims:
+  - name: gpu
+    resourceClaimTemplateName: h100-single-gpu
+  containers:
+  - name: workload
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    resources:
+      claims:
+      - name: gpu

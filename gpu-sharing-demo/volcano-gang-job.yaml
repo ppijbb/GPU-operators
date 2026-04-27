@@ -1,0 +1,41 @@
+---
+# Volcano Gang Scheduling 데모
+# 4개 worker가 모두 동시에 스케줄 가능할 때만 시작 (all-or-nothing)
+# minAvailable=4 → 슬라이스 4개 확보 못하면 전체 Pending
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: gpu-gang-train
+  namespace: default
+spec:
+  minAvailable: 4
+  schedulerName: volcano
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  tasks:
+  - replicas: 4
+    name: worker
+    template:
+      metadata:
+        labels:
+          app: gpu-gang
+        annotations:
+          run.ai/simulated-gpu-utilization: "75-95"
+      spec:
+        nodeSelector:
+          type: kwok
+          run.ai/simulated-gpu-node-pool: h100-pool
+        tolerations:
+        - key: kwok.x-k8s.io/node
+          operator: Equal
+          value: fake
+          effect: NoSchedule
+        restartPolicy: OnFailure
+        containers:
+        - name: trainer
+          image: ubuntu:22.04
+          command: ["sleep", "infinity"]
+          resources:
+            limits:
+              nvidia.com/mig-2g.20gb: 1

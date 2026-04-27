@@ -1,0 +1,128 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kwok-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kwok-autoscaler
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch", "create", "patch", "update"]
+- apiGroups: [""]
+  resources: ["nodes/status"]
+  verbs: ["patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kwok-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kwok-autoscaler
+subjects:
+- kind: ServiceAccount
+  name: kwok-autoscaler
+  namespace: kube-system
+---
+# fake h100 노드 템플릿 (인덱스 placeholder __N__)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kwok-autoscaler-tpl
+  namespace: kube-system
+data:
+  node.tpl: |
+    apiVersion: v1
+    kind: Node
+    metadata:
+      name: h100-node-__N__
+      annotations:
+        kwok.x-k8s.io/node: fake
+      labels:
+        type: kwok
+        run.ai/simulated-gpu-node-pool: h100-pool
+        nvidia.com/gpu.product: NVIDIA-H100-SXM5-80GB
+        nvidia.com/gpu.count: "8"
+        nvidia.com/mig.strategy: mixed
+    spec:
+      taints:
+      - effect: NoSchedule
+        key: kwok.x-k8s.io/node
+        value: fake
+    status:
+      allocatable:
+        cpu: "96"
+        memory: 384Gi
+        pods: "110"
+        nvidia.com/gpu: "8"
+        nvidia.com/mig-1g.10gb: "56"
+        nvidia.com/mig-2g.20gb: "24"
+        nvidia.com/mig-3g.40gb: "16"
+        nvidia.com/mig-7g.80gb: "8"
+      capacity:
+        cpu: "96"
+        memory: 384Gi
+        pods: "110"
+        nvidia.com/gpu: "8"
+        nvidia.com/mig-1g.10gb: "56"
+        nvidia.com/mig-2g.20gb: "24"
+        nvidia.com/mig-3g.40gb: "16"
+        nvidia.com/mig-7g.80gb: "8"
+      conditions:
+      - type: Ready
+        status: "True"
+  loop.sh: |
+    #!/bin/bash
+    set -eu
+    MAX_NODES=20
+    while true; do
+      pending=$(kubectl get pods -A -o json | jq '[.items[]
+        | select(.status.phase=="Pending")
+        | select(.spec.nodeSelector["run.ai/simulated-gpu-node-pool"]=="h100-pool")
+        | select((.status.conditions[]? | select(.reason=="Unschedulable")) != null)] | length')
+      if [ "${pending:-0}" -gt 0 ]; then
+        existing=$(kubectl get nodes -l run.ai/simulated-gpu-node-pool=h100-pool,type=kwok -o name | wc -l)
+        next=$((existing + 1))
+        if [ "$next" -le "$MAX_NODES" ]; then
+          echo "[autoscale] $pending pending → creating h100-node-$next"
+          sed "s/__N__/$next/g" /tpl/node.tpl | kubectl apply -f -
+        fi
+      fi
+      sleep 10
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kwok-autoscaler
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: kwok-autoscaler}
+  template:
+    metadata:
+      labels: {app: kwok-autoscaler}
+    spec:
+      serviceAccountName: kwok-autoscaler
+      containers:
+      - name: autoscaler
+        image: alpine/k8s:1.32.2
+        command: ["/bin/bash", "/tpl/loop.sh"]
+        volumeMounts:
+        - name: tpl
+          mountPath: /tpl
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits:   {cpu: 200m, memory: 256Mi}
+      volumes:
+      - name: tpl
+        configMap:
+          name: kwok-autoscaler-tpl
+          defaultMode: 0755

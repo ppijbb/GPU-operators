@@ -43,17 +43,9 @@ topology:
 
 statusUpdater:
   disableNodeLabeling: false
-  image:
-    repository: fake-gpu-operator/status-updater
-    tag: local
-    pullPolicy: IfNotPresent
 
 kwokGpuDevicePlugin:
   enabled: true
-  image:
-    repository: fake-gpu-operator/kwok-gpu-device-plugin
-    tag: local
-    pullPolicy: IfNotPresent
 
 kwokDraPlugin:
   enabled: true
@@ -69,6 +61,3 @@ computeDomainDraPlugin:
 
 kwokComputeDomainDraPlugin:
   enabled: false
-
-imagePullSecrets:
-  - name: gcr-secret

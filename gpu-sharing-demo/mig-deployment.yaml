@@ -1,0 +1,72 @@
+---
+# MIG 1g.10gb 슬라이스를 사용하는 Deployment
+# H100 KWOK 노드(h100-pool)에 스케줄됨. replicas 늘리면 MIG 슬라이스 소비 증가.
+# 한 노드당 mig-1g.10gb 56개 × 3 노드 = 168개 슬롯까지 스케일 가능.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mig-worker
+  namespace: default
+  labels:
+    app: mig-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mig-worker
+  template:
+    metadata:
+      labels:
+        app: mig-worker
+        mode: mig
+      annotations:
+        run.ai/simulated-gpu-utilization: "60-85"
+    spec:
+      nodeSelector:
+        type: kwok
+        run.ai/simulated-gpu-node-pool: h100-pool
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Equal
+        value: fake
+        effect: NoSchedule
+      containers:
+      - name: workload
+        image: ubuntu:22.04
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+            nvidia.com/mig-1g.10gb: '1'
+          limits:
+            cpu: 500m
+            memory: 512Mi
+            nvidia.com/mig-1g.10gb: '1'
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+---
+# replicas → mig-1g.10gb 슬라이스 사용량 기준으로 늘릴 수 있는 HPA 예시는
+# fake-gpu-operator가 custom metric을 노출해야 동작. 여기선 수동 스케일로 충분.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mig-worker
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mig-worker
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
