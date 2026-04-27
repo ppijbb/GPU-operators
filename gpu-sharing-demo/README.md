@@ -42,6 +42,38 @@ Grafana UI → Dashboards → Import → **12239** 입력 → Prometheus 선택
 | `DCGM_FI_DEV_FB_USED` | Framebuffer (VRAM) used |
 | `DCGM_FI_DEV_FB_FREE` | Framebuffer free |
 
+## 들쭉날쭉(Bursty) Run:ai 데모 — Deployment / Job / CronJob + HPA
+
+Pod 단발 데모(`runai-fractional.yaml`)와 달리, **워크로드가 시간에 따라 출렁이는** 현실 시나리오:
+
+```bash
+kubectl apply -f runai-hpa-demo.yaml
+
+# 상태 관찰
+kubectl get hpa runai-inference-hpa -w
+kubectl get pods -l mode=runai-fractional -w
+kubectl get jobs,cronjobs
+```
+
+| 리소스 | 패턴 | 어노테이션 |
+|--------|------|-----------|
+| Deployment `runai-inference` + HPA | 30s burst / 30s idle 반복 → CPU 50% 기준 1~8 replica 오토스케일 | util 30~90% |
+| Job `runai-train-burst` | parallelism=4, ~2분 학습 burst | util 70~100% |
+| CronJob `runai-batch-inference` | 2분마다 45s batch | util 50~80% |
+
+Grafana `DCGM_FI_DEV_GPU_UTIL` 그래프가 **계단/톱니 형태**로 흔들리는 게 핵심.
+
+### GPU util 기반 HPA로 바꾸기 (옵션)
+
+CPU 대신 실제 GPU util로 스케일하려면 `prometheus-adapter` 설치 후
+`runai-hpa-demo.yaml` 안의 주석 처리된 `runai-inference-gpu-hpa` 블록 활성화.
+설치 명령은 같은 파일 주석 참고.
+
+### 정리
+```bash
+kubectl delete -f runai-hpa-demo.yaml
+```
+
 ## 비교 포인트
 
 - **Run:ai fractional**: 같은 GPU에 여러 Pod가 util 합산되는 것 확인

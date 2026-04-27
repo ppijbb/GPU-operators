@@ -1,0 +1,238 @@
+---
+# Run:ai 스타일 들쭉날쭉(bursty) 워크로드 데모
+# - Deployment + HPA: 추론 서비스 (트래픽에 따라 1~8 replica 오토스케일)
+# - Job:               단발성 학습 burst
+# - CronJob:           주기적 batch 추론 (2분마다 짧게 폭주)
+#
+# 모든 Pod에 run.ai/simulated-gpu-utilization 어노테이션을 붙여
+# fake-gpu-operator가 DCGM_FI_DEV_GPU_UTIL 메트릭으로 노출하게 함
+# → Grafana에서 들쭉날쭉한 GPU util 그래프 확인 가능
+
+---
+###############################################################################
+# 1) Inference Deployment + HPA (CPU 기반, 즉시 동작)
+###############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runai-inference
+  namespace: default
+  labels:
+    app: runai-inference
+    mode: runai-fractional
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: runai-inference
+  template:
+    metadata:
+      labels:
+        app: runai-inference
+        mode: runai-fractional
+      annotations:
+        # fake-gpu-operator가 이 범위에서 util을 흔들어 줌 → 들쭉날쭉
+        run.ai/simulated-gpu-utilization: "30-90"
+    spec:
+      containers:
+      - name: server
+        image: polinux/stress
+        # CPU를 사인파처럼 흔들어 HPA가 scale up/down 반복하도록
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          while true; do
+            # 30s burst
+            stress --cpu 1 --timeout 30s
+            # 30s idle
+            sleep 30
+          done
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: 500m
+            memory: 128Mi
+            nvidia.com/gpu: "1"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: runai-inference-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: runai-inference
+  minReplicas: 1
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 15
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+###############################################################################
+# 2) (옵션) GPU util 기반 HPA — prometheus-adapter 필요
+#    설치 후 위 HPA를 지우고 이걸 적용:
+#    helm install prom-adapter prometheus-community/prometheus-adapter \
+#      -n gpu-operator \
+#      --set prometheus.url=http://prometheus.gpu-operator.svc \
+#      --set prometheus.port=9090 \
+#      --set 'rules.custom[0].seriesQuery=DCGM_FI_DEV_GPU_UTIL{pod!=""}' \
+#      --set 'rules.custom[0].resources.overrides.namespace.resource=namespace' \
+#      --set 'rules.custom[0].resources.overrides.pod.resource=pod' \
+#      --set 'rules.custom[0].name.matches=DCGM_FI_DEV_GPU_UTIL' \
+#      --set 'rules.custom[0].name.as=gpu_utilization' \
+#      --set 'rules.custom[0].metricsQuery=avg by (<<.GroupBy>>) (<<.Series>>{<<.LabelMatchers>>})'
+###############################################################################
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: runai-inference-gpu-hpa
+#   namespace: default
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: runai-inference
+#   minReplicas: 1
+#   maxReplicas: 8
+#   metrics:
+#   - type: Pods
+#     pods:
+#       metric:
+#         name: gpu_utilization
+#       target:
+#         type: AverageValue
+#         averageValue: "60"   # 평균 GPU util > 60%면 scale up
+
+---
+###############################################################################
+# 3) Training Job — 단발성 burst (parallelism으로 동시에 4개 polling)
+###############################################################################
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: runai-train-burst
+  namespace: default
+  labels:
+    app: runai-train
+    mode: runai-fractional
+spec:
+  parallelism: 4
+  completions: 4
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: runai-train
+        mode: runai-fractional
+      annotations:
+        run.ai/simulated-gpu-utilization: "70-100"  # 학습은 빡세게
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: trainer
+        image: polinux/stress
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "[$(date)] training on $NODE_NAME";
+          stress --cpu 1 --timeout 120s;
+          echo "[$(date)] done";
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: 500m
+            memory: 128Mi
+            nvidia.com/gpu: "1"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+
+---
+###############################################################################
+# 4) CronJob — 2분마다 짧은 batch 추론 burst (들쭉날쭉의 핵심)
+###############################################################################
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: runai-batch-inference
+  namespace: default
+  labels:
+    app: runai-batch
+    mode: runai-fractional
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      parallelism: 2
+      completions: 2
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 120
+      template:
+        metadata:
+          labels:
+            app: runai-batch
+            mode: runai-fractional
+          annotations:
+            run.ai/simulated-gpu-utilization: "50-80"
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: batch
+            image: polinux/stress
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              echo "[$(date)] batch start on $NODE_NAME";
+              stress --cpu 1 --timeout 45s;
+              echo "[$(date)] batch end";
+            resources:
+              requests:
+                cpu: 100m
+                memory: 64Mi
+                nvidia.com/gpu: "1"
+              limits:
+                cpu: 500m
+                memory: 128Mi
+                nvidia.com/gpu: "1"
+            env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
