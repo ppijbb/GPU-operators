@@ -123,6 +123,8 @@ spec:
           mountPath: /etc/grafana/provisioning/datasources
         - name: dashboard-provider
           mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboards
+          mountPath: /var/lib/grafana/dashboards
       volumes:
       - name: datasource
         configMap:
@@ -130,6 +132,9 @@ spec:
       - name: dashboard-provider
         configMap:
           name: grafana-dashboard-provider
+      - name: dashboards
+        configMap:
+          name: grafana-dashboards
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -145,9 +150,65 @@ data:
       type: file
       options:
         path: /var/lib/grafana/dashboards
-  # NVIDIA DCGM Exporter 공식 대시보드 (ID: 12239) 임포트 방법:
+  # NVIDIA DCGM Exporter 공식 대시보드 (ID: 12239) 추가 임포트 방법:
   # Grafana UI -> Dashboards -> Import -> ID 12239 입력
   # Prometheus datasource 선택 후 Import
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: gpu-operator
+data:
+  dcgm.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "schemaVersion": 38,
+      "title": "NVIDIA DCGM GPU Metrics",
+      "uid": "dcgm-gpu",
+      "time": {"from": "now-30m", "to": "now"},
+      "refresh": "10s",
+      "timezone": "browser",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "GPU Utilization (%)",
+          "id": 1,
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "DCGM_FI_DEV_GPU_UTIL", "legendFormat": "GPU {{gpu}} ({{Hostname}})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}}
+        },
+        {
+          "type": "timeseries",
+          "title": "GPU Memory Used (MiB)",
+          "id": 2,
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "DCGM_FI_DEV_FB_USED", "legendFormat": "GPU {{gpu}} ({{Hostname}})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "decmbytes"}}
+        },
+        {
+          "type": "timeseries",
+          "title": "GPU Temperature (°C)",
+          "id": 3,
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "DCGM_FI_DEV_GPU_TEMP", "legendFormat": "GPU {{gpu}} ({{Hostname}})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "celsius"}}
+        },
+        {
+          "type": "timeseries",
+          "title": "GPU Power Usage (W)",
+          "id": 4,
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "DCGM_FI_DEV_POWER_USAGE", "legendFormat": "GPU {{gpu}} ({{Hostname}})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "watt"}}
+        }
+      ]
+    }
 ---
 apiVersion: v1
 kind: Service
