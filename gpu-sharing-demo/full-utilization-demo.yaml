@@ -1,0 +1,205 @@
+---
+# Full GPU Utilization Demo
+# 목표:
+#   - 비어있는 두 노드(gpu-lab-worker: T4×4, gpu-lab-worker2: A100×8)를
+#     공간 분할(노드/GPU 단위) + 시간 분할(time-slicing)로 꽉 채워 사용
+#   - T4 4장을 각 4슬라이스 → 16슬롯, A100 8장을 각 4슬라이스 → 32슬롯
+#   - 합계 48개 pod가 12개 물리 GPU를 동시에 공유
+#
+# 적용 순서:
+#   kubectl apply -f full-utilization-demo.yaml
+#   (oversubscribe-nodes Job이 먼저 노드 status를 패치한 뒤 워크로드가 스케줄링됨)
+#
+# 정리:
+#   kubectl delete ns gpu-scheduling-demo
+#   # 노드 capacity 원복:
+#   kubectl patch node gpu-lab-worker  --subresource=status --type=merge \
+#     -p '{"status":{"capacity":{"nvidia.com/gpu":"4"},"allocatable":{"nvidia.com/gpu":"4"}}}'
+#   kubectl patch node gpu-lab-worker2 --subresource=status --type=merge \
+#     -p '{"status":{"capacity":{"nvidia.com/gpu":"8"},"allocatable":{"nvidia.com/gpu":"8"}}}'
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-scheduling-demo
+  labels:
+    demo: full-utilization
+---
+# 1) 노드 GPU capacity oversubscribe (시간 분할 시뮬레이션)
+#    NVIDIA device-plugin의 time-slicing replicas 효과를 kwok/fake 환경에서 흉내냄.
+#    실제 클러스터에서는 device-plugin ConfigMap으로 처리 (replicas: 4)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-patcher
+  namespace: gpu-scheduling-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-patcher
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "nodes/status"]
+  verbs: ["get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-patcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-patcher
+subjects:
+- kind: ServiceAccount
+  name: node-patcher
+  namespace: gpu-scheduling-demo
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oversubscribe-nodes
+  namespace: gpu-scheduling-demo
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: node-patcher
+      restartPolicy: OnFailure
+      # kwok 노드에는 스케줄되지 않도록 control-plane에 두기
+      nodeSelector:
+        kubernetes.io/hostname: gpu-lab-control-plane
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: patcher
+        image: bitnami/kubectl:1.32
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "[*] T4 node: 4 → 16 GPUs (4 slices/GPU)"
+          kubectl patch node gpu-lab-worker --subresource=status --type=merge \
+            -p '{"status":{"capacity":{"nvidia.com/gpu":"16"},"allocatable":{"nvidia.com/gpu":"16"}}}'
+          echo "[*] A100 node: 8 → 32 GPUs (4 slices/GPU)"
+          kubectl patch node gpu-lab-worker2 --subresource=status --type=merge \
+            -p '{"status":{"capacity":{"nvidia.com/gpu":"32"},"allocatable":{"nvidia.com/gpu":"32"}}}'
+          echo "[*] 라벨링: gpu-share=time-sliced"
+          kubectl label node gpu-lab-worker  gpu-share=time-sliced --overwrite
+          kubectl label node gpu-lab-worker2 gpu-share=time-sliced --overwrite
+          echo "[OK] oversubscription complete"
+---
+# 2) T4 노드: 16개 슬롯을 채우는 Deployment (4 GPU × 4 slice)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t4-shared
+  namespace: gpu-scheduling-demo
+  labels:
+    workload: t4-shared
+spec:
+  replicas: 16
+  selector:
+    matchLabels:
+      app: t4-shared
+  template:
+    metadata:
+      labels:
+        app: t4-shared
+        gpu-tier: t4
+      annotations:
+        # fake-gpu-operator가 utilization을 시뮬레이션할 때 사용
+        run.ai/simulated-gpu-utilization: "60-90"
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gpu-lab-worker
+      # 한 GPU 슬라이스에 여러 pod이 같이 올라가도록 anti-affinity는 걸지 않음
+      containers:
+      - name: trainer
+        image: ubuntu:22.04
+        command: ["sh","-c","echo $POD_NAME on $NODE_NAME using slice; sleep infinity"]
+        env:
+        - name: POD_NAME
+          valueFrom: { fieldRef: { fieldPath: metadata.name } }
+        - name: NODE_NAME
+          valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+            nvidia.com/gpu: "1"
+          limits:
+            nvidia.com/gpu: "1"
+---
+# 3) A100 노드: 32개 슬롯 (8 GPU × 4 slice)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a100-shared
+  namespace: gpu-scheduling-demo
+  labels:
+    workload: a100-shared
+spec:
+  replicas: 32
+  selector:
+    matchLabels:
+      app: a100-shared
+  template:
+    metadata:
+      labels:
+        app: a100-shared
+        gpu-tier: a100
+      annotations:
+        run.ai/simulated-gpu-utilization: "70-95"
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gpu-lab-worker2
+      # GPU 분산을 유도: 같은 GPU index에 너무 몰리지 않게 soft anti-affinity
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: a100-shared
+      containers:
+      - name: trainer
+        image: ubuntu:22.04
+        command: ["sh","-c","echo $POD_NAME on $NODE_NAME; sleep infinity"]
+        env:
+        - name: POD_NAME
+          valueFrom: { fieldRef: { fieldPath: metadata.name } }
+        - name: NODE_NAME
+          valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+            nvidia.com/gpu: "1"
+          limits:
+            nvidia.com/gpu: "1"
+---
+# 4) 검증용: 사용량 확인 명령어 모음 ConfigMap (참고용)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verify-commands
+  namespace: gpu-scheduling-demo
+data:
+  check.sh: |
+    #!/bin/bash
+    echo "=== Node capacity ==="
+    kubectl get nodes gpu-lab-worker gpu-lab-worker2 \
+      -o custom-columns=NODE:.metadata.name,GPU_CAP:.status.capacity.nvidia\\.com/gpu,GPU_ALLOC:.status.allocatable.nvidia\\.com/gpu
+    echo
+    echo "=== Pods per node ==="
+    kubectl get pods -n gpu-scheduling-demo -o wide --no-headers | awk '{print $7}' | sort | uniq -c
+    echo
+    echo "=== Allocated GPUs per node ==="
+    kubectl describe node gpu-lab-worker  | grep -E "nvidia.com/gpu" | head -5
+    kubectl describe node gpu-lab-worker2 | grep -E "nvidia.com/gpu" | head -5

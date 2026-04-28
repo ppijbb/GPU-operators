@@ -39,6 +39,56 @@ data:
       static_configs:
       - targets: ['nvidia-dcgm-exporter-kwok.gpu-operator.svc:9400']
       metrics_path: /metrics
+    - job_name: 'kube-state-metrics'
+      static_configs:
+      - targets: ['kube-state-metrics.gpu-operator.svc:8080']
+      metrics_path: /metrics
+    - job_name: 'kubelet-cadvisor'
+      scheme: https
+      tls_config:
+        insecure_skip_verify: true
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: gpu-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "nodes/proxy", "nodes/metrics", "services", "endpoints", "pods"]
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: gpu-operator
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,6 +105,7 @@ spec:
       labels:
         app: prometheus
     spec:
+      serviceAccountName: prometheus
       containers:
       - name: prometheus
         image: prom/prometheus:v2.51.0
@@ -89,6 +140,99 @@ spec:
   ports:
   - port: 9090
     targetPort: 9090
+  type: ClusterIP
+---
+# kube-state-metrics: Pod별 리소스 요청/제한, GPU 할당량 등 K8s 오브젝트 메트릭
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: gpu-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets", "nodes", "pods", "services", "resourcequotas", "replicationcontrollers", "limitranges", "persistentvolumeclaims", "persistentvolumes", "namespaces", "endpoints"]
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "daemonsets", "deployments", "replicasets"]
+  verbs: ["list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses", "volumeattachments"]
+  verbs: ["list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies", "ingresses"]
+  verbs: ["list", "watch"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims", "resourceslices"]
+  verbs: ["list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: gpu-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: gpu-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: kube-state-metrics
+      containers:
+      - name: kube-state-metrics
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
+        ports:
+        - name: http-metrics
+          containerPort: 8080
+        - name: telemetry
+          containerPort: 8081
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: gpu-operator
+spec:
+  selector:
+    app: kube-state-metrics
+  ports:
+  - name: http-metrics
+    port: 8080
+    targetPort: 8080
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -211,6 +355,92 @@ data:
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"expr": "DCGM_FI_DEV_POWER_USAGE", "legendFormat": "GPU {{gpu}} ({{Hostname}})", "refId": "A"}],
           "fieldConfig": {"defaults": {"unit": "watt"}}
+        },
+        {
+          "type": "row",
+          "title": "Pod-level Metrics",
+          "id": 100,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+          "collapsed": false
+        },
+        {
+          "type": "table",
+          "title": "Pod GPU Allocation (nvidia.com/gpu)",
+          "id": 5,
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{
+            "expr": "sum by (namespace, pod, node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"})",
+            "legendFormat": "{{namespace}}/{{pod}}",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }],
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}}
+        },
+        {
+          "type": "table",
+          "title": "Pod Memory Requests vs Limits",
+          "id": 6,
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "expr": "sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"memory\"})",
+              "legendFormat": "request",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "expr": "sum by (namespace, pod) (kube_pod_container_resource_limits{resource=\"memory\"})",
+              "legendFormat": "limit",
+              "refId": "B",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod Memory Usage (working set)",
+          "id": 7,
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{
+            "expr": "sum by (namespace, pod) (container_memory_working_set_bytes{pod!=\"\",container!=\"\",container!=\"POD\"})",
+            "legendFormat": "{{namespace}}/{{pod}}",
+            "refId": "A"
+          }],
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod CPU Usage (cores)",
+          "id": 8,
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{
+            "expr": "sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{pod!=\"\",container!=\"\",container!=\"POD\"}[2m]))",
+            "legendFormat": "{{namespace}}/{{pod}}",
+            "refId": "A"
+          }],
+          "fieldConfig": {"defaults": {"unit": "none"}}
+        },
+        {
+          "type": "timeseries",
+          "title": "Per-Pod GPU Memory Used (MiB) — DCGM with pod mapping",
+          "id": 9,
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 34},
+          "description": "DCGM exporter가 pod label을 붙여줄 때만 표시됩니다 (kubernetes-pod-mapping 활성화 필요)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{
+            "expr": "DCGM_FI_DEV_FB_USED * on(gpu, Hostname) group_left(exported_pod, exported_namespace) (DCGM_FI_DEV_FB_USED{exported_pod!=\"\"})",
+            "legendFormat": "{{exported_namespace}}/{{exported_pod}} (GPU {{gpu}})",
+            "refId": "A"
+          }],
+          "fieldConfig": {"defaults": {"unit": "decmbytes"}}
         }
       ]
     }
